@@ -80,8 +80,16 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
             mJsDelivery.notifyNotification(bundle);
 
             // Dismiss the notification popup.
-            int notificationID = Integer.parseInt(bundle.getString("id"));
-            mRNPushNotificationHelper.clearNotification(notificationID);
+            if (bundle.getBoolean("autoCancel", true)) {
+                int notificationID = Integer.parseInt(bundle.getString("id"));
+                String tag = bundle.getString("tag");
+                if (tag != null) {
+                    mRNPushNotificationHelper.clearNotification(tag, notificationID);
+                } else {
+                    mRNPushNotificationHelper.clearNotification(notificationID);
+                }
+            }
+
         }
     }
 
