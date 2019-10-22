@@ -2,12 +2,13 @@ package com.dieam.reactnativepushnotification.modules;
 
 import android.app.Activity;
 import android.app.Application;
-import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import android.util.Log;
+
 import androidx.core.app.NotificationManagerCompat;
 
 import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
@@ -21,14 +22,11 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-
-import android.util.Log;
-
-import com.google.firebase.messaging.FirebaseMessaging;
 
 public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener {
     public static final String LOG_TAG = "RNPushNotification";// all logging should use this tag
@@ -73,12 +71,17 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         }
         return bundle;
     }
+
     public void onNewIntent(Intent intent) {
         Bundle bundle = this.getBundleFromIntent(intent);
         if (bundle != null) {
             bundle.putBoolean("foreground", false);
             intent.putExtra("notification", bundle);
             mJsDelivery.notifyNotification(bundle);
+
+            // Dismiss the notification popup.
+            int notificationID = Integer.parseInt(bundle.getString("id"));
+            mRNPushNotificationHelper.clearNotification(notificationID);
         }
     }
 
@@ -104,7 +107,8 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
             String action = actions.getString(i);
             intentFilter.addAction(getReactApplicationContext().getPackageName() + "." + action);
         }
-        getReactApplicationContext().registerReceiver(new BroadcastReceiver() {
+
+        BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 Bundle bundle = intent.getBundleExtra("notification");
@@ -113,11 +117,12 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
                 mJsDelivery.notifyNotificationAction(bundle);
 
                 // Dismiss the notification popup.
-                NotificationManager manager = (NotificationManager) context.getSystemService(context.NOTIFICATION_SERVICE);
                 int notificationID = Integer.parseInt(bundle.getString("id"));
-                manager.cancel(notificationID);
+                mRNPushNotificationHelper.clearNotification(notificationID);
             }
-        }, intentFilter);
+        };
+
+        getReactApplicationContext().registerReceiver(broadcastReceiver, intentFilter);
     }
 
     @ReactMethod
@@ -153,6 +158,7 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         if (bundle.getString("id") == null) {
             bundle.putString("id", String.valueOf(mRandomNumberGenerator.nextInt()));
         }
+
         mRNPushNotificationHelper.sendToNotificationCentre(bundle);
     }
 
