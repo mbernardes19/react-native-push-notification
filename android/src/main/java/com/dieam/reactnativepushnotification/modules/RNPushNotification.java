@@ -79,17 +79,7 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
             intent.putExtra("notification", bundle);
             mJsDelivery.notifyNotification(bundle);
 
-            // Dismiss the notification popup.
-            if (bundle.getBoolean("autoCancel", true)) {
-                int notificationID = Integer.parseInt(bundle.getString("id"));
-                String tag = bundle.getString("tag");
-                if (tag != null) {
-                    mRNPushNotificationHelper.clearNotification(tag, notificationID);
-                } else {
-                    mRNPushNotificationHelper.clearNotification(notificationID);
-                }
-            }
-
+            mRNPushNotificationHelper.clearNotification(bundle);
         }
     }
 
@@ -108,6 +98,7 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         }, intentFilter);
     }
 
+    // TODO remove
     private void registerNotificationsReceiveNotificationActions(ReadableArray actions) {
         IntentFilter intentFilter = new IntentFilter();
         // Add filter for each actions.
@@ -120,13 +111,13 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
             @Override
             public void onReceive(Context context, Intent intent) {
                 Bundle bundle = intent.getBundleExtra("notification");
+                Log.v(LOG_TAG, "onReceiveAction " + bundle);
 
                 // Notify the action.
                 mJsDelivery.notifyNotificationAction(bundle);
 
                 // Dismiss the notification popup.
-                int notificationID = Integer.parseInt(bundle.getString("id"));
-                mRNPushNotificationHelper.clearNotification(notificationID);
+                mRNPushNotificationHelper.clearNotification(bundle);
             }
         };
 
