@@ -20,7 +20,6 @@ public class RNPushNotificationActionReceiver extends BroadcastReceiver {
     public void onReceive(final Context context, final Intent intent) {
         final Bundle notification = intent.getBundleExtra("notification");
         Log.v(LOG_TAG, "onReceiveAction " + notification);
-        Log.v(LOG_TAG, "onReceiveAction.context " + context);
 
         ReactApplication application = (ReactApplication) context.getApplicationContext();
         RNPushNotificationHelper mRNPushNotificationHelper = new RNPushNotificationHelper((Application) application);
