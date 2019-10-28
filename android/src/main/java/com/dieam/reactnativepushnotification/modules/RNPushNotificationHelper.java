@@ -282,6 +282,7 @@ public class RNPushNotificationHelper {
                 if (largeIconBytes != null && largeIconBytes.length > 0) {
                     // largeIcon is url and image was loaded into largeIconBytes
                     largeIconBitmap = BitmapFactory.decodeByteArray(largeIconBytes, 0, largeIconBytes.length);
+                    bundle.remove("largeIconBytes");
                 } else {
                     largeIconResId = res.getIdentifier(largeIcon, "mipmap", packageName);
                     largeIconBitmap = BitmapFactory.decodeResource(res, largeIconResId);
