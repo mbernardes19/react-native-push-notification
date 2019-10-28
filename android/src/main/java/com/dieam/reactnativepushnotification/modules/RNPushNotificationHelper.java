@@ -18,6 +18,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -29,6 +30,12 @@ import com.facebook.react.bridge.ReadableMap;
 import org.json.JSONArray;
 import org.json.JSONException;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
@@ -139,24 +146,34 @@ public class RNPushNotificationHelper {
     }
 
     public void sendToNotificationCentre(Bundle bundle) {
+        if (getMainActivityClass() == null) {
+            Log.e(LOG_TAG, "No activity class found for the notification");
+            return;
+        }
+
+        if (bundle.getString("message") == null) {
+            // this happens when a 'data' notification is received - we do not synthesize a local notification in this case
+            Log.d(LOG_TAG, "Cannot send to notification centre because there is no 'message' field in: " + bundle);
+            return;
+        }
+
+
+        if (bundle.getString("id") == null) {
+            Log.e(LOG_TAG, "No notification ID specified for the notification");
+            return;
+        }
+
+        String largeIcon = bundle.getString("largeIcon");
+        if (largeIcon != null && isURL(largeIcon)) {
+            new LoadImages(this).execute(bundle);
+            return;
+        }
+
+        buildNotificationAndSend(bundle);
+    }
+
+    private void buildNotificationAndSend(Bundle bundle) {
         try {
-            Class intentClass = getMainActivityClass();
-            if (intentClass == null) {
-                Log.e(LOG_TAG, "No activity class found for the notification");
-                return;
-            }
-
-            if (bundle.getString("message") == null) {
-                // this happens when a 'data' notification is received - we do not synthesize a local notification in this case
-                Log.d(LOG_TAG, "Cannot send to notification centre because there is no 'message' field in: " + bundle);
-                return;
-            }
-
-            String notificationIdString = bundle.getString("id");
-            if (notificationIdString == null) {
-                Log.e(LOG_TAG, "No notification ID specified for the notification");
-                return;
-            }
 
             Resources res = context.getResources();
             String packageName = context.getPackageName();
@@ -238,9 +255,8 @@ public class RNPushNotificationHelper {
                 notification.setNumber(Integer.parseInt(numberString));
             }
 
+            // Set small icon
             int smallIconResId;
-            int largeIconResId;
-
             String smallIcon = bundle.getString("smallIcon");
 
             if (smallIcon != null) {
@@ -256,28 +272,37 @@ public class RNPushNotificationHelper {
                     smallIconResId = android.R.drawable.ic_dialog_info;
                 }
             }
+            notification.setSmallIcon(smallIconResId);
 
+            // Set large icon if defined
+            int largeIconResId;
+            Bitmap largeIconBitmap;
             if (largeIcon != null) {
-                largeIconResId = res.getIdentifier(largeIcon, "mipmap", packageName);
+                byte[] largeIconBytes = bundle.getByteArray("largeIconBytes");
+                if (largeIconBytes != null && largeIconBytes.length > 0) {
+                    // largeIcon is url and image was loaded into largeIconBytes
+                    largeIconBitmap = BitmapFactory.decodeByteArray(largeIconBytes, 0, largeIconBytes.length);
+                } else {
+                    largeIconResId = res.getIdentifier(largeIcon, "mipmap", packageName);
+                    largeIconBitmap = BitmapFactory.decodeResource(res, largeIconResId);
+                }
             } else {
                 largeIconResId = res.getIdentifier("ic_launcher", "mipmap", packageName);
+                largeIconBitmap = BitmapFactory.decodeResource(res, largeIconResId);
             }
 
-            Bitmap largeIconBitmap = BitmapFactory.decodeResource(res, largeIconResId);
-
-            if (largeIconResId != 0 && (largeIcon != null || Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)) {
+            if (largeIconBitmap != null && (largeIcon != null || Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)) {
                 notification.setLargeIcon(largeIconBitmap);
             }
-
-            notification.setSmallIcon(smallIconResId);
+            
             String bigText = bundle.getString("bigText");
-
             if (bigText == null) {
                 bigText = bundle.getString("message");
             }
 
             notification.setStyle(new NotificationCompat.BigTextStyle().bigText(bigText));
 
+            Class intentClass = getMainActivityClass();
             Intent intent = new Intent(context, intentClass);
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
             bundle.putBoolean("userInteraction", true);
@@ -323,6 +348,7 @@ public class RNPushNotificationHelper {
                 }
             }
 
+            String notificationIdString = bundle.getString("id");
             int notificationID = Integer.parseInt(notificationIdString);
 
             PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
@@ -333,7 +359,7 @@ public class RNPushNotificationHelper {
 
             notification.setContentIntent(pendingIntent);
 
-            if (!bundle.containsKey("vibrate") || bundle.getBoolean("vibrate")) {
+            if (!bundle.containsKey("vibrate") || Boolean.parseBoolean(bundle.getString("vibrate"))) {
                 long vibration = bundle.containsKey("vibration") ? (long) bundle.getDouble("vibration") : DEFAULT_VIBRATION;
                 if (vibration == 0)
                     vibration = DEFAULT_VIBRATION;
@@ -644,4 +670,71 @@ public class RNPushNotificationHelper {
         }
         return false;
     }
+
+    /**
+     * Method checks if the string is url
+     */
+    private boolean isURL(String url) {
+        try {
+            new URL(url);
+            return true;
+        } catch (MalformedURLException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Converts InputStream to byte array
+     */
+    private byte[] toByteArray(InputStream in) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int nRead;
+        byte[] data = new byte[1024];
+        while ((nRead = in.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+
+        buffer.flush();
+        return buffer.toByteArray();
+    }
+
+    private static class LoadImages extends AsyncTask<Bundle, Void, Bundle> {
+        private RNPushNotificationHelper mRNPushNotificationHelper;
+        public LoadImages(RNPushNotificationHelper mRNPushNotificationHelper) {
+            this.mRNPushNotificationHelper = mRNPushNotificationHelper;
+        }
+
+        @Override
+        protected Bundle doInBackground(Bundle... params) {
+            InputStream in;
+            String largeIconUrl = params[0].getString("largeIcon");
+            Log.v(LOG_TAG, "LoadImages: loading " + largeIconUrl);
+            try {
+                URL url = new URL(largeIconUrl);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setDoInput(true);
+                connection.connect();
+                in = connection.getInputStream();
+
+                params[0].putByteArray("largeIconBytes", mRNPushNotificationHelper.toByteArray(in));
+
+            } catch (MalformedURLException e) {
+                // Do nothing
+            } catch (IOException e) {
+                // Do nothing
+            }
+            return params[0];
+        }
+
+        @Override
+        protected void onPostExecute(Bundle bundle) {
+            super.onPostExecute(bundle);
+            try {
+                mRNPushNotificationHelper.buildNotificationAndSend(bundle);
+            } catch (Exception e) {
+                Log.e(LOG_TAG, "LoadImages: failed " + bundle.getString("largeIcon"), e);
+            }
+        }
+    }
+
 }
