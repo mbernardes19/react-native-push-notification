@@ -451,8 +451,7 @@ public class RNPushNotificationHelper {
             }
 
             if ("time".equals(repeatType) && repeatTime <= 0) {
-                Log.w(LOG_TAG, "repeatType specified as time but no repeatTime " +
-                        "has been mentioned");
+                Log.w(LOG_TAG, "repeatType specified as time but no repeatTime has been mentioned");
                 return;
             }
 
