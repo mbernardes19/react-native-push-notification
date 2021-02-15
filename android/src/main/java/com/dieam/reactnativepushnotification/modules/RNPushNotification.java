@@ -9,6 +9,7 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.util.Log;
 
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
 
 import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
@@ -24,12 +25,22 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.google.firebase.messaging.FirebaseMessaging;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
 public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener {
     public static final String LOG_TAG = "RNPushNotification";// all logging should use this tag
+
+    public interface RNIntentHandler {
+        void onNewIntent(Intent intent);
+
+        @Nullable
+        Bundle getBundleFromIntent(Intent intent);
+    }
+
+    public static ArrayList<RNIntentHandler> IntentHandlers = new ArrayList();
 
     private RNPushNotificationHelper mRNPushNotificationHelper;
     private final Random mRandomNumberGenerator = new Random(System.currentTimeMillis());
@@ -67,19 +78,31 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         if (intent.hasExtra("notification")) {
             bundle = intent.getBundleExtra("notification");
         } else if (intent.hasExtra("google.message_id")) {
+            bundle = new Bundle();
             bundle = intent.getExtras();
         }
+
+        if (bundle == null) {
+            for (RNIntentHandler handler : IntentHandlers) {
+                bundle = handler.getBundleFromIntent(intent);
+            }
+        }
+
+        if(null != bundle && !bundle.getBoolean("foreground", false) && !bundle.containsKey("userInteraction")) {
+            bundle.putBoolean("userInteraction", true);
+        }
+
         return bundle;
     }
 
     public void onNewIntent(Intent intent) {
+        for (RNIntentHandler handler : IntentHandlers) {
+            handler.onNewIntent(intent);
+        }
+
         Bundle bundle = this.getBundleFromIntent(intent);
         if (bundle != null) {
-            bundle.putBoolean("foreground", false);
-            intent.putExtra("notification", bundle);
             mJsDelivery.notifyNotification(bundle);
-
-            mRNPushNotificationHelper.clearNotification(bundle);
         }
     }
 
